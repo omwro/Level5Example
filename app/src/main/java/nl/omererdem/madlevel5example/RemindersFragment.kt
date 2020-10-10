@@ -7,6 +7,8 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.setFragmentResultListener
+import androidx.fragment.app.viewModels
+import androidx.lifecycle.Observer
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -24,7 +26,7 @@ class RemindersFragment : Fragment() {
     private val reminders = arrayListOf<Reminder>()
     private val reminderAdapter = ReminderAdapter(reminders)
 
-    private lateinit var reminderRepository: ReminderRepository
+    private val viewModel: ReminderViewModel by viewModels()
 
     override fun onCreateView(
             inflater: LayoutInflater, container: ViewGroup?,
@@ -38,21 +40,17 @@ class RemindersFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         initViews()
-        observeAddReminderResult()
 
-        reminderRepository = ReminderRepository(requireContext())
         getRemindersFromDatabase()
     }
 
     private fun getRemindersFromDatabase() {
-        CoroutineScope(Dispatchers.Main).launch {
-            val reminders = withContext(Dispatchers.IO) {
-                reminderRepository.getAllReminders()
-            }
+        viewModel.reminders.observe(viewLifecycleOwner, Observer {
+            reminders ->
             this@RemindersFragment.reminders.clear()
             this@RemindersFragment.reminders.addAll(reminders)
             reminderAdapter.notifyDataSetChanged()
-        }
+        })
     }
 
     private fun initViews() {
@@ -61,19 +59,6 @@ class RemindersFragment : Fragment() {
         rvReminders.addItemDecoration(DividerItemDecoration(context, DividerItemDecoration.VERTICAL))
 
         createItemTouchHelper().attachToRecyclerView(rvReminders)
-    }
-
-    private fun observeAddReminderResult() {
-        setFragmentResultListener(REQ_REMINDER_KEY) { key, bundle ->
-            bundle.getString(BUNDLE_REMINDER_KEY)?.let {
-                CoroutineScope(Dispatchers.Main).launch {
-                    withContext(Dispatchers.IO) {
-                        reminderRepository.insertReminder(Reminder(it))
-                    }
-                    getRemindersFromDatabase()
-                }
-            } ?: Log.e("ReminderFragment", "Request triggered, but empty reminder text!")
-        }
     }
 
     private fun createItemTouchHelper(): ItemTouchHelper {
@@ -89,12 +74,7 @@ class RemindersFragment : Fragment() {
             override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
                 val position = viewHolder.adapterPosition
 
-                CoroutineScope(Dispatchers.Main).launch {
-                    withContext(Dispatchers.IO) {
-                        reminderRepository.deleteReminder(reminders[position])
-                    }
-                    getRemindersFromDatabase()
-                }
+                viewModel.deleteReminder(reminders[position])
             }
         }
         return ItemTouchHelper(callback)
